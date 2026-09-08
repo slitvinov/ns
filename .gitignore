@@ -1,0 +1,6 @@
+out/
+*.raw
+*.xdmf2
+*.pvsm
+__pycache__/
+navier-stokes.pdf
