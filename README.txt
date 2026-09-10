@@ -19,11 +19,17 @@ ns_time.py    the live page: ONE scene at t = 0.5 plus a time slider to
               lam^-h on the swirl (6% at the very end).  Color: speed on one
               scale for all times (saturates from t = 0.98 on), linear or
               log, or distance from the axis (?c=1).  The GLB is embedded.
+              The radius-vs-height anisotropy, l_z/l_r ~ tau^-h, is a 6%
+              effect over the whole slider and invisible; the paper's
+              Figure 1 exaggerates it, and so does the "exaggerate" checkbox
+              (?x=1), which scales z by lam^(1/2 - h_vis) with h_vis from
+              --h-vis (default 0.15, l_z/l_r x 2.5 by the end).  Speed and
+              t are still the real ones; the label says which h is shown.
 
   S0=$(...)   # 99.9th percentile of speed at t = 0.5
   pvpython ns_render.py out/core.xdmf2 --ribbon --decimate 0.35 --sides 12 \
                         --color speed --gray --color-range 0 $S0 --export out/core.glb --no-html
-  pvpython ns_time.py out/core.glb --s0 $S0 -o site/index.html
+  pvpython ns_time.py out/core.glb --s0 $S0 --h-vis 0.15 -o site/index.html
 
 WHAT IS PLOTTED
 

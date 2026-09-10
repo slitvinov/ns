@@ -10,9 +10,15 @@ tau 0.5 -> 0.02).  So the streamlines at any time are the tau0 streamlines
 scaled by (sqrt(lam), sqrt(lam), lam^D), and speed is scaled by lam^-A.
 One GLB, two numbers per time.
 
+The anisotropy is a factor lam^-h on the aspect ratio: 6% over the whole
+slider, invisible.  The paper's Figure 1 exaggerates it on purpose, and so
+does the "exaggerate" checkbox (?x=1): the axial scale then uses
+D_vis = 1/2 - h_vis (--h-vis, default 0.15) instead of D.  Speed scaling and
+the label's t are untouched; only the shape is a lie, and it says so.
+
     pvpython ns_render.py out/core.xdmf2 --ribbon --color speed --gray \
              --color-range 0 S0 --export out/core.glb --no-html
-    pvpython ns_time.py out/core.glb --tau0 0.5 --s0 S0 --smax SMAX -o out/site/index.html
+    pvpython ns_time.py out/core.glb --tau0 0.5 --s0 S0 --smax SMAX --h-vis 0.15 -o out/site/index.html
 
 --gray makes COLOR_0.r = speed / S0; the page applies the palette in a shader,
 so speed (linear or log, on one scale for all times) and distance from the
@@ -40,7 +46,7 @@ HTML = r"""<!doctype html>
          background: rgba(255,255,255,.85); border-radius: 8px; user-select: none; white-space: nowrap; }
   #bar input[type=range] { width: min(46vw, 420px); }
   #play { width: 30px; height: 26px; border: 1px solid #bbb; border-radius: 5px; background: #fff; cursor: pointer; }
-  #lbl { font-variant-numeric: tabular-nums; min-width: 5.5em; }
+  #lbl { font-variant-numeric: tabular-nums; min-width: 5.5em; white-space: pre; }
   #col { border: 1px solid #bbb; border-radius: 5px; background: #fff; padding: 3px 6px; font: inherit; }
 </style>
 </head>
@@ -52,6 +58,7 @@ HTML = r"""<!doctype html>
   <span id="lbl"></span>
   <select id="col" title="color"><option value="0">color: speed</option><option value="1">color: radius</option></select>
   <label id="loglbl" title="logarithmic speed scale"><input id="log" type="checkbox"> log</label>
+  <label id="xlbl" title="exaggerate the radius-vs-height anisotropy: l_z ~ tau^(1/2 - h_vis) instead of tau^(1/2 - h), as in the paper's Figure 1"><input id="x" type="checkbox"> exaggerate</label>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
@@ -60,6 +67,7 @@ HTML = r"""<!doctype html>
 const GLB_B64 = "__GLB__";
 const TAU0 = __TAU0__, TAU1 = __TAU1__;   // scene time, and the end of the slider
 const A = __A__, D = __D__;               // 1/2 + h, 1/2 - h
+const H = __H__, HVIS = __HVIS__, DVIS = 0.5 - HVIS;   // exaggerated axial exponent
 const S0 = __S0__, SMAX = __SMAX__;       // COLOR_0.r = speed / S0; palette spans [0, SMAX]
 const LOGMIN = SMAX / 60;
 const LOOP_MS = 8000;
@@ -67,11 +75,12 @@ const LOOP_MS = 8000;
 function b64ToBuf(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u.buffer; }
 
 const qs = new URLSearchParams(location.search);
-let colorMode = +(qs.get("c") || 0), logScale = qs.get("log") === "1";
+let colorMode = +(qs.get("c") || 0), logScale = qs.get("log") === "1", exag = qs.get("x") === "1";
 let v = 0;                                 // slider position in [0, 1]
 if (qs.get("t")) { const tau = 1 - +qs.get("t"); v = Math.log(tau / TAU0) / Math.log(TAU1 / TAU0); v = Math.min(1, Math.max(0, v)); }
 document.getElementById("col").value = String(colorMode);
 document.getElementById("log").checked = logScale;
+document.getElementById("x").checked = exag;
 
 const canvas = document.getElementById("c");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -127,18 +136,20 @@ function applyColor() {
 }
 document.getElementById("col").addEventListener("change", e => { colorMode = +e.target.value; applyColor(); });
 document.getElementById("log").addEventListener("change", e => { logScale = e.target.checked; applyColor(); });
+document.getElementById("x").addEventListener("change", e => { exag = e.target.checked; setTime(v); });
 
 let group = null, home = null, playing = false;
 const slider = document.getElementById("s"), lbl = document.getElementById("lbl"), play = document.getElementById("play");
 
-// time -> geometry: scale (sqrt(lam), sqrt(lam), lam^D), speed x lam^-A
+// time -> geometry: scale (sqrt(lam), sqrt(lam), lam^D), speed x lam^-A.
+// Exaggerated: lam^DVIS on z, so the column visibly turns slender; speed is still the real one.
 function setTime(vv) {
   v = vv;
   const tau = TAU0 * Math.pow(TAU1 / TAU0, v), lam = tau / TAU0;
-  if (group) group.scale.set(Math.sqrt(lam), Math.sqrt(lam), Math.pow(lam, D));
+  if (group) group.scale.set(Math.sqrt(lam), Math.sqrt(lam), Math.pow(lam, exag ? DVIS : D));
   U.speedFactor.value = Math.pow(lam, -A) * S0 / SMAX;
   slider.value = Math.round(1000 * v);
-  lbl.textContent = `t = ${(1 - tau).toFixed(3)}`;
+  lbl.textContent = `t = ${(1 - tau).toFixed(3)}` + (exag ? `  h = ${HVIS} (real ${H})` : "");
 }
 slider.addEventListener("input", () => setTime(+slider.value / 1000));
 function togglePlay() { playing = !playing; play.innerHTML = playing ? "&#10074;&#10074;" : "&#9654;"; }
@@ -201,6 +212,8 @@ def main():
     ap.add_argument("--s0", type=float, required=True, help="speed encoded as COLOR_0.r = 1 in the GLB")
     ap.add_argument("--smax", type=float, default=None, help="top of the color scale (default s0 (tau0/tau1)^A)")
     ap.add_argument("--h", type=float, default=0.01)
+    ap.add_argument("--h-vis", type=float, default=0.15,
+                    help="h used for the axial scale when 'exaggerate' is checked (shape only; default 0.15)")
     a = ap.parse_args()
     A, D = 0.5 + a.h, 0.5 - a.h
     smax = a.smax if a.smax else a.s0 * (a.tau0 / a.tau1) ** A
@@ -209,12 +222,13 @@ def main():
     page = (HTML.replace("__TITLE__", "Navier–Stokes blowup core").replace("__GLB__", b64)
                 .replace("__TAU0__", repr(a.tau0)).replace("__TAU1__", repr(a.tau1))
                 .replace("__A__", repr(A)).replace("__D__", repr(D))
+                .replace("__H__", repr(a.h)).replace("__HVIS__", repr(a.h_vis))
                 .replace("__S0__", repr(a.s0)).replace("__SMAX__", repr(smax)))
     os.makedirs(os.path.dirname(os.path.abspath(a.out)) or ".", exist_ok=True)
     with open(a.out, "w") as f:
         f.write(page)
     print(f"wrote {a.out}  ({len(page)/1e6:.1f} MB; t from {1-a.tau0:.3f} to {1-a.tau1:.3f}, "
-          f"speed scale [0, {smax:.3g}])")
+          f"speed scale [0, {smax:.3g}]; exaggerated l_z/l_r x{(a.tau0/a.tau1)**a.h_vis:.2f} vs real x{(a.tau0/a.tau1)**a.h:.2f})")
 
 
 if __name__ == "__main__":
